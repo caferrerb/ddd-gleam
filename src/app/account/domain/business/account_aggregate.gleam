@@ -1,8 +1,8 @@
 import app/account/domain/account_commands.{
-  type AccountCommandData, create_account_command_handler,
+  type AccountCommandData, execute_account_command,
 }
 import app/account/domain/account_events.{
-  type AccountEvent, account_event_to_string, create_account_event_reducer,
+  type AccountEvent, account_event_to_string, handle_account_events,
 }
 import app/account/domain/model/account.{type Account}
 import gleam/float
@@ -19,11 +19,7 @@ import lib/ddd/model/error
 pub fn build_account_agregate(
   init_account: Account,
 ) -> Aggregate(Account, AccountEvent, AccountCommandData) {
-  new_aggregate(
-    init_account,
-    create_account_command_handler(),
-    create_account_event_reducer(),
-  )
+  new_aggregate(init_account, execute_account_command, handle_account_events)
 }
 
 pub fn account_execute_command(

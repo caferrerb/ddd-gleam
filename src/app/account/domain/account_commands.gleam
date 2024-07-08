@@ -6,7 +6,6 @@ import app/account/domain/model/account
 import gleam/dict
 import gleam/io
 import gleam/option.{type Option}
-import lib/ddd/business/command_handler
 import lib/ddd/model/command.{type Command}
 import lib/ddd/model/error
 import lib/ddd/model/event.{type Event}
@@ -24,51 +23,16 @@ pub type AccountCommandData {
   DebitedAccountCommandData(amount: Float, debited_at: Option(String))
 }
 
-pub fn create_account_command_handler() -> command_handler.CommandExecuter(
-  AccountCommandData,
-  account.Account,
-  AccountEvent,
-) {
-  let handlers =
-    dict.from_list([
-      #(create_account_command, create_account),
-      #(credit_account_command, credit_account),
-      #(debit_account_command, debit_account),
-    ])
-  command_handler.CommandExecuter(handlers: handlers)
-}
-
-fn create_account(
+pub fn execute_account_command(
   cmd: Command(AccountCommandData),
-  _,
+  account: account.Account,
 ) -> Result(List(Event(AccountEvent)), error.DomainError) {
   io.debug("++++create_account cmd+++")
   case cmd.data {
     CreateAccountCommandData(id, created_at) ->
       Ok([build_account_created_event(id, created_at)])
-    _ -> Error(error.DomainError("no command"))
-  }
-}
-
-fn credit_account(
-  cmd: Command(AccountCommandData),
-  _,
-) -> Result(List(Event(AccountEvent)), error.DomainError) {
-  io.debug("++++credit cmd+++")
-  case cmd.data {
     CreditAccountCommandData(amount, credited_at) ->
       Ok([build_account_credited_event(amount, credited_at)])
-    _ -> Error(error.DomainError("no command"))
-  }
-}
-
-fn debit_account(
-  cmd: Command(AccountCommandData),
-  account: account.Account,
-) -> Result(List(Event(AccountEvent)), error.DomainError) {
-  io.debug("++++debit_account cmd+++")
-
-  case cmd.data {
     DebitedAccountCommandData(amount, debited_at) -> {
       case account.available >=. amount {
         True -> Ok([build_account_debited_event(amount, debited_at)])
