@@ -1,65 +1,88 @@
 import gleam/io
 import gleam/list
-import gleam/option.{None, Some}
-import gleam/result
+import gleam/option.{None, Some, unwrap}
+import lib/ddd/business/event_reducer.{type StateReducerFn, reduce_events}
+import lib/ddd/infraestructure/event_store.{
+  type GetEventsFromStateStore, type SaveEventsToStateStore, persist_events,
+}
 import lib/ddd/model/command.{type Command}
 import lib/ddd/model/error
 import lib/ddd/model/event.{type Event, Event, Metadata}
-import lib/ddd/model/state.{type State}
+import lib/ddd/model/state
+
+import lib/ddd/infraestructure/state_store.{
+  type StateStoreGetFn, type StateStorePersistFn,
+}
 
 pub type CommandExecutorFunction(c, s, e) =
   fn(Command(c), s) -> Result(List(Event(e)), error.DomainError)
 
-pub type StateReducerFn(s, e) =
-  fn(Event(e), s) -> Result(s, error.DomainError)
+pub type CommandResult(s, e) {
+  CommandResult(state: state.State(s), events: List(Event(e)))
+}
 
 pub type Aggregate(s, e, c) {
   Aggregate(
-    state: state.State(s),
-    events: List(Event(e)),
+    name: String,
     command_handler: CommandExecutorFunction(c, s, e),
+    init_state_builder: fn() -> s,
     reducer: StateReducerFn(s, e),
+    events_getter: GetEventsFromStateStore(e),
+    events_persiter: SaveEventsToStateStore(e),
+    state_getter: StateStoreGetFn(s),
+    state_persister: StateStorePersistFn(s),
   )
 }
 
-fn reduce_events(
-  state_reducer: StateReducerFn(s, e),
-  events: List(Event(e)),
-  initial_state: s,
-) -> Result(s, error.DomainError) {
-  list.fold(events, Ok(initial_state), fn(acc_state, event) {
-    use new_state <- result.try(acc_state)
-    case state_reducer(event, new_state) {
-      Ok(reduction) -> Ok(reduction)
-      Error(_) ->
-        Error(error.DomainError("Error applying event " <> event.name))
-    }
-  })
-}
-
 pub fn new_aggregate(
-  init_state: s,
+  name: String,
+  init_state_builder: fn() -> s,
   command_handler: CommandExecutorFunction(c, s, e),
   reducer: StateReducerFn(s, e),
+  events_recovery_fn: GetEventsFromStateStore(e),
+  events_persist_fn: SaveEventsToStateStore(e),
+  state_getter: StateStoreGetFn(s),
+  state_persister: StateStorePersistFn(s),
 ) -> Aggregate(s, e, c) {
-  let state: state.State(s) = state.State(data: init_state, revision: 0)
   Aggregate(
-    state: state,
-    events: [],
+    name: name,
     command_handler: command_handler,
+    init_state_builder: init_state_builder,
     reducer: reducer,
+    events_getter: events_recovery_fn,
+    events_persiter: events_persist_fn,
+    state_getter: state_getter,
+    state_persister: state_persister,
   )
 }
 
 pub fn mutate_aggregate(
   aggr: Aggregate(s, e, c),
   cmd: Command(c),
-) -> Result(Aggregate(s, e, c), error.DomainError) {
-  let command_handler = aggr.command_handler
-  let reducer = aggr.reducer
-  let aggre_state = aggr.state
-  let init_revision = aggre_state.revision
+) -> Result(CommandResult(s, e), error.DomainError) {
+  case aggr.state_getter(aggr.name, cmd.aggregate_id) {
+    Ok(option_state) -> {
+      let default_state =
+        state.State(
+          id: cmd.aggregate_id,
+          data: aggr.init_state_builder(),
+          revision: 0,
+        )
+      execute_command(aggr, unwrap(option_state, default_state), cmd)
+    }
+    Error(error) ->
+      Error(error.DomainError(
+        "error getting state aggregate " <> cmd.aggregate_id,
+      ))
+  }
+}
 
+fn execute_command(
+  aggr: Aggregate(s, e, c),
+  aggre_state: state.State(s),
+  cmd: Command(c),
+) -> Result(CommandResult(s, e), error.DomainError) {
+  let init_revision = aggre_state.revision
   case aggr.command_handler(cmd, aggre_state.data) {
     Ok(cmd_events) -> {
       case reduce_events(aggr.reducer, cmd_events, aggre_state.data) {
@@ -77,11 +100,29 @@ pub fn mutate_aggregate(
                 )),
               )
             })
-            |> list.append(aggr.events, _)
 
           let new_revision = init_revision + list.length(cmd_events)
-          let new_state = state.State(data: data_state, revision: new_revision)
-          Ok(Aggregate(..aggr, state: new_state, events: events))
+          let new_state =
+            state.State(
+              id: cmd.aggregate_id,
+              data: data_state,
+              revision: new_revision,
+            )
+          case
+            persist_events(
+              aggr.name,
+              new_state.id,
+              events,
+              aggr.events_persiter,
+            )
+          {
+            Ok(_) ->
+              case aggr.state_persister(aggr.name, new_state) {
+                Ok(_) -> Ok(CommandResult(events: events, state: new_state))
+                Error(error) -> Error(error)
+              }
+            Error(error) -> Error(error)
+          }
         }
         Error(e) -> {
           Error(e)

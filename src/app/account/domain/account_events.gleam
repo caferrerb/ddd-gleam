@@ -90,7 +90,7 @@ pub fn handle_account_events(
   }
 }
 
-fn account_event_data_to_json(data: AccountEvent) -> Json {
+pub fn account_event_data_to_json(data: AccountEvent) -> Json {
   case data {
     AccountCreated(id, created_at) ->
       object([#("id", string(id)), #("created_at", string(created_at))])

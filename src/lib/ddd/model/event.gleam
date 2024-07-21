@@ -31,7 +31,7 @@ pub fn unwrap_metadata(metadata: Option(Metadata)) -> Metadata {
   )
 }
 
-fn metdata_to_json(e: Event(d)) -> Json {
+pub fn metdata_to_json(e: Event(d)) -> Json {
   let metadata = unwrap_metadata(e.metadata)
   object([
     #("revision", int(metadata.revision)),
@@ -51,6 +51,6 @@ pub fn to_json(e: Event(d), data_to_json_fn: EventDataToJsonFn(d)) -> Json {
 
 pub fn to_string(e: Event(d), data_to_json_fn: EventDataToJsonFn(d)) -> String {
   let metadata = unwrap_metadata(e.metadata)
-  //to_json(e, data_to_json_fn) |> json.to_string
-  "name:" <> e.name <> ",revision:" <> int.to_string(metadata.revision)
+  to_json(e, data_to_json_fn) |> json.to_string
+  //"name:" <> e.name <> ",revision:" <> int.to_string(metadata.revision)
 }

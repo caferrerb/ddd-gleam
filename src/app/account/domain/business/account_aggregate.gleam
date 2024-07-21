@@ -4,46 +4,40 @@ import app/account/domain/account_commands.{
 import app/account/domain/account_events.{
   type AccountEvent, account_event_to_string, handle_account_events,
 }
-import app/account/domain/model/account.{type Account}
-import gleam/float
-import gleam/int
-import gleam/io
-import gleam/list
-import gleam/option.{unwrap}
+import app/account/domain/model/account.{type Account, new}
 import lib/ddd/business/aggregate.{
-  type Aggregate, mutate_aggregate, new_aggregate,
+  type Aggregate, type CommandResult, mutate_aggregate, new_aggregate,
 }
 import lib/ddd/model/command.{type Command}
 import lib/ddd/model/error
 
-pub fn build_account_agregate(
-  init_account: Account,
-) -> Aggregate(Account, AccountEvent, AccountCommandData) {
-  new_aggregate(init_account, execute_account_command, handle_account_events)
+import app/account/application/account_event_store.{
+  get_account_events, persist_account_events,
+}
+import app/account/application/account_state_store.{
+  get_account_state, persist_account_state,
+}
+
+pub fn build_account_agregate() -> Aggregate(
+  Account,
+  AccountEvent,
+  AccountCommandData,
+) {
+  new_aggregate(
+    "account",
+    fn() { new("") },
+    execute_account_command,
+    handle_account_events,
+    get_account_events,
+    persist_account_events,
+    get_account_state,
+    persist_account_state,
+  )
 }
 
 pub fn account_execute_command(
   aggr: Aggregate(Account, AccountEvent, AccountCommandData),
   cmd: Command(AccountCommandData),
-) -> Result(
-  Aggregate(Account, AccountEvent, AccountCommandData),
-  error.DomainError,
-) {
+) -> Result(CommandResult(Account, AccountEvent), error.DomainError) {
   mutate_aggregate(aggr, cmd)
-}
-
-pub fn print_account(aggr: Aggregate(Account, AccountEvent, AccountCommandData)) {
-  let account: Account = aggr.state.data
-  io.println("available = " <> float.to_string(account.available))
-  io.println("credits = " <> float.to_string(account.credits))
-  io.println("debits = " <> float.to_string(account.debits))
-  io.println("revision = " <> int.to_string(aggr.state.revision))
-
-  io.println("----------events---------")
-
-  list.fold(aggr.events, "", fn(_, event) {
-    io.print(account_event_to_string(event) <> "<::>")
-    ""
-  })
-  io.println("")
 }

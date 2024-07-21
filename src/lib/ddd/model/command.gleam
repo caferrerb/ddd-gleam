@@ -7,5 +7,10 @@ pub type CommandMetadata {
 }
 
 pub type Command(c) {
-  Command(metadata: Option(CommandMetadata), data: c, name: String)
+  Command(
+    metadata: Option(CommandMetadata),
+    data: c,
+    name: String,
+    aggregate_id: String,
+  )
 }

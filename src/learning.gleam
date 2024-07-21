@@ -4,35 +4,36 @@ import app/account/domain/account_commands.{
 }
 import app/account/domain/account_events.{type AccountEvent}
 import app/account/domain/business/account_aggregate.{
-  account_execute_command, build_account_agregate, print_account,
+  account_execute_command, build_account_agregate,
 }
 import app/account/domain/model/account.{type Account}
 import gleam/io
 import gleam/option.{None, Some}
 import gleam/result
-import lib/ddd/business/aggregate.{type Aggregate}
+import lib/ddd/business/aggregate.{type Aggregate, type CommandResult}
 import lib/ddd/model/command.{Command}
 
 pub fn main() {
   let init_account = account.new("")
-  let aggr = build_account_agregate(init_account)
+  let aggr = build_account_agregate()
 
-  use aggr: Aggregate(Account, AccountEvent, AccountCommandData) <- result.try(
+  use result: CommandResult(Account, AccountEvent) <- result.try(
     account_execute_command(
       aggr,
       Command(
+        aggregate_id: "1",
         data: CreateAccountCommandData(id: "1", created_at: Some("2024-1-1")),
         metadata: None,
         name: "create_account",
       ),
     ),
   )
-  print_account(aggr)
 
-  use aggr: Aggregate(Account, AccountEvent, AccountCommandData) <- result.try(
+  use result: CommandResult(Account, AccountEvent) <- result.try(
     account_execute_command(
       aggr,
       Command(
+        aggregate_id: "1",
         data: CreditAccountCommandData(
           amount: 100.0,
           credited_at: Some("2024-1-1"),
@@ -42,12 +43,12 @@ pub fn main() {
       ),
     ),
   )
-  print_account(aggr)
 
-  use aggr: Aggregate(Account, AccountEvent, AccountCommandData) <- result.try(
+  use result: CommandResult(Account, AccountEvent) <- result.try(
     account_execute_command(
       aggr,
       Command(
+        aggregate_id: "1",
         data: DebitedAccountCommandData(
           amount: 10.0,
           debited_at: Some("2024-1-1"),
@@ -57,7 +58,6 @@ pub fn main() {
       ),
     ),
   )
-  print_account(aggr)
 
   Ok(Nil)
 }

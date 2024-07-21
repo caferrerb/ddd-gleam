@@ -1,3 +1,3 @@
 pub type State(data) {
-  State(data: data, revision: Int)
+  State(id: String, data: data, revision: Int)
 }
