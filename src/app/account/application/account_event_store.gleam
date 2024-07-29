@@ -15,6 +15,7 @@ pub fn get_account_events(
   id: String,
 ) -> Result(Option(List(Event(AccountEvent))), error.DomainError) {
   io.debug("getting event for " <> aggregate <> "=" <> id)
+  event_store_client.get_events(aggregate, Some(0))
   Ok(Some([]))
 }
 

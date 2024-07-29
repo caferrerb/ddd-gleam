@@ -51,3 +51,12 @@ pub fn persist_events(
 ) -> Result(List(Event(e)), error.DomainError) {
   event_saver(aggregate, id, events)
 }
+
+pub fn get_events(
+  aggregate: String,
+  id: String,
+  event_getter: GetEventsFromStateStore(e),
+) -> Result(List(Event(e)), error.DomainError) {
+  todo
+  //event_getter(aggregate, id)
+}

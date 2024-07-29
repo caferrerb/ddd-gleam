@@ -60,6 +60,7 @@ pub fn mutate_aggregate(
   aggr: Aggregate(s, e, c),
   cmd: Command(c),
 ) -> Result(CommandResult(s, e), error.DomainError) {
+  aggr.events_getter(aggr.name, cmd.aggregate_id)
   case aggr.state_getter(aggr.name, cmd.aggregate_id) {
     Ok(option_state) -> {
       let default_state =
