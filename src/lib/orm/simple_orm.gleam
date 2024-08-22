@@ -4,7 +4,7 @@ import gleam/io
 import gleam/json.{type Json, array, int, null, object, string}
 import gleam/list
 import gleam/option.{type Option, Some}
-import gleam/pgo.{type Connection, type Value}
+import gleam/pgo.{type Connection, type QueryError, type Value}
 import gleam/string
 
 pub type Register {
@@ -68,9 +68,51 @@ fn build_insert(table: String, registers: List(Register)) -> QueryBuildResult {
         <> columns
         <> " ) VALUES "
         <> string.join(idxs, ",")
+      io.println(query)
+
       QueryBuildResult(query: query, params: values)
     }
     [] -> QueryBuildResult(query: "Nil", params: [])
+  }
+}
+
+fn parse_error(e: QueryError) -> DatabaseError {
+  case e {
+    pgo.PostgresqlError(code, name, message) -> {
+      io.println_error(code <> name <> message)
+      DatabaseError(
+        "PostgresqlError:" <> code <> ":" <> ":" <> name <> ":" <> message,
+      )
+    }
+    pgo.ConnectionUnavailable -> {
+      io.println_error("ConnectionUnavailable")
+      DatabaseError("ConnectionUnavailable:")
+    }
+    pgo.ConstraintViolated(e, g, f) -> {
+      io.println_error("ConstraintViolated" <> e <> g <> f)
+      DatabaseError("ConstraintViolated" <> e <> g <> f)
+    }
+    pgo.UnexpectedArgumentCount(e, g) -> {
+      let message =
+        "UnexpectedArgumentCount" <> int.to_string(e) <> "_" <> int.to_string(g)
+      io.println_error(message)
+      DatabaseError(message)
+    }
+    pgo.UnexpectedArgumentType(e, g) -> {
+      DatabaseError("UnexpectedArgumentType---" <> e <> "_" <> g)
+    }
+    pgo.UnexpectedResultType(decode_errors) -> {
+      io.println_error("UnexpectedResultType")
+      list.map(decode_errors, fn(error) {
+        io.println_error(
+          "decode error: expected ="
+          <> error.expected
+          <> ", found:"
+          <> error.found,
+        )
+      })
+      DatabaseError("UnexpectedResultType")
+    }
   }
 }
 
@@ -85,49 +127,15 @@ pub fn persist(
 
   case result {
     Ok(_) -> Ok(registers)
-    Error(e) -> {
-      case e {
-        pgo.PostgresqlError(code, name, message) -> {
-          io.println_error(code <> name <> message)
-          Error(DatabaseError(
-            "PostgresqlError:" <> code <> ":" <> ":" <> name <> ":" <> message,
-          ))
-        }
-        pgo.ConnectionUnavailable -> {
-          io.println_error("ConnectionUnavailable")
-          Error(DatabaseError("ConnectionUnavailable:"))
-        }
-        pgo.ConstraintViolated(e, g, f) -> {
-          io.println_error("ConstraintViolated" <> e <> g <> f)
-          Error(DatabaseError("ConstraintViolated" <> e <> g <> f))
-        }
-        pgo.UnexpectedArgumentCount(e, g) -> {
-          Error(DatabaseError(
-            "UnexpectedArgumentCount"
-            <> int.to_string(e)
-            <> "_"
-            <> int.to_string(g),
-          ))
-        }
-        pgo.UnexpectedArgumentType(e, g) -> {
-          Error(DatabaseError("UnexpectedArgumentType---" <> e <> "_" <> g))
-        }
-        pgo.UnexpectedResultType(_) -> {
-          io.println_error("UnexpectedResultType")
-          Error(DatabaseError("UnexpectedResultType"))
-        }
-      }
-    }
+    Error(e) -> Error(parse_error(e))
   }
 }
 
-pub fn find(
+fn build_select(
   table: String,
   projection_fields: List(String),
   predicates: List(#(String, Value)),
-  row_type: Decoder(t),
-  mapper: fn(Dynamic) -> List(d),
-) -> Result(List(d), DatabaseError) {
+) -> QueryBuildResult {
   let init_query =
     "SELECT " <> string.join(projection_fields, ",") <> " FROM " <> table
 
@@ -143,6 +151,41 @@ pub fn find(
     }
     [] -> init_query
   }
+
+  let params =
+    list.map(predicates, fn(pred) {
+      let #(_, value) = pred
+      value
+    })
   io.println(query)
-  Ok([])
+  QueryBuildResult(query: query, params: params)
+}
+
+pub fn execute_query(
+  query: String,
+  params: List(Value),
+  row_type: Decoder(t),
+  mapper: fn(List(t)) -> List(d),
+  connection: Connection,
+) -> Result(List(d), DatabaseError) {
+  let result = pgo.execute(query, connection, params, row_type)
+  case result {
+    Ok(data) -> {
+      let rows = data.rows
+      Ok(mapper(rows))
+    }
+    Error(e) -> Error(parse_error(e))
+  }
+}
+
+pub fn find(
+  table: String,
+  projection_fields: List(String),
+  predicates: List(#(String, Value)),
+  row_type: Decoder(t),
+  mapper: fn(List(t)) -> List(d),
+  connection: Connection,
+) -> Result(List(d), DatabaseError) {
+  let select = build_select(table, projection_fields, predicates)
+  execute_query(select.query, select.params, row_type, mapper, connection)
 }
