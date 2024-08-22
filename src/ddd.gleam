@@ -11,10 +11,10 @@ import youid/uuid
 pub fn main() {
   dotenv_gleam.config()
   let cl_aggr = creditline_aggregate.new()
-  let uuid = "1DFBEAC9-B9C5-4BE7-A8DB-46C70DC66F0F"
-  //uuid.v4_string()
+  //let uuid = "1DFBEAC9-B9C5-4BE7-A8DB-46C70DC66F0F"
+  let uuid = uuid.v4_string()
 
-  //let cl = create_creditline(cl_aggr, uuid, "bp-id", 1000.1)
+  let cl = create_creditline(cl_aggr, uuid, "bp-id", 1000.1)
   //print_cl(cl)
   let cl = withdraw_creditline(cl_aggr, uuid, 100.3)
   print_cl(cl)
